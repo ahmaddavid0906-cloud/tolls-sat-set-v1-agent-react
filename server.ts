@@ -95,13 +95,28 @@ async function startServer() {
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-  // Apply Global API Rate Limiter to prevent DoS and quota drain
+  // Enable trust proxy for Google Cloud Run / Nginx reverse proxy so req.ip reflects actual client IP
+  app.set('trust proxy', 1);
+
+  // Apply Global API Rate Limiter to prevent DoS and quota drain with reasonable thresholds and real-time exemptions
   const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // Limit each IP to 200 requests per `window`
-    message: { error: 'Terlalu banyak permintaan (Rate limit). Silakan coba lagi nanti.' },
+    windowMs: 1 * 60 * 1000, // 1 minute window
+    max: 600, // Up to 600 requests per minute per client IP
+    message: { error: 'Terlalu banyak permintaan (Rate limit). Silakan coba lagi sebentar lagi.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      const url = req.originalUrl || req.url || '';
+      return (
+        url.includes('/api/events') ||
+        url.includes('/api/health') ||
+        url.includes('/api/ping') ||
+        url.includes('/active-status') ||
+        url.includes('/events/live') ||
+        url.includes('/events/stream') ||
+        url.includes('/events/poll')
+      );
+    },
   });
   app.use('/api', apiLimiter);
 

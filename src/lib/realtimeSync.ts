@@ -2,63 +2,82 @@
 import { getUserSession } from './auth';
 import { sseManager } from './sseManager';
 
-export async function hydrateDataFromServer() {
-  try {
-    const [trxRes, clientsRes, codesRes, pkgsRes, qrisRes, contactRes, keysRes, agentsRes] = await Promise.allSettled([
-      fetch('/api/transactions').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/admin/clients').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/access-codes').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/packages').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/admin/qris').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/admin/contact-settings').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/apikeys').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/agents').then((r) => (r.ok ? r.json() : null)),
-    ]);
+let hydrationPromise: Promise<void> | null = null;
+let lastHydrationTimestamp = 0;
 
-    if (trxRes.status === 'fulfilled' && Array.isArray(trxRes.value)) {
-      localStorage.setItem('satset_transactions_db', JSON.stringify(trxRes.value));
-      window.dispatchEvent(new Event('transactions-updated'));
-    }
-
-    if (clientsRes.status === 'fulfilled' && Array.isArray(clientsRes.value)) {
-      localStorage.setItem('satset_clients_data', JSON.stringify(clientsRes.value));
-      window.dispatchEvent(new Event('satset_clients_updated'));
-    }
-
-    if (codesRes.status === 'fulfilled' && Array.isArray(codesRes.value)) {
-      localStorage.setItem('satset_valid_access_codes', JSON.stringify(codesRes.value));
-      window.dispatchEvent(new Event('satset_access_codes_updated'));
-    }
-
-    if (pkgsRes.status === 'fulfilled' && Array.isArray(pkgsRes.value) && pkgsRes.value.length > 0) {
-      localStorage.setItem('satset_packages_data', JSON.stringify(pkgsRes.value));
-      localStorage.setItem('satset_packages_db', JSON.stringify(pkgsRes.value));
-      window.dispatchEvent(new Event('satset_packages_updated'));
-    }
-
-    if (qrisRes.status === 'fulfilled' && qrisRes.value && typeof qrisRes.value === 'object') {
-      localStorage.setItem('satset_qris_config', JSON.stringify(qrisRes.value));
-      window.dispatchEvent(new Event('satset_qris_updated'));
-    }
-
-    if (contactRes.status === 'fulfilled' && contactRes.value && typeof contactRes.value === 'object') {
-      localStorage.setItem('satset_contact_settings', JSON.stringify(contactRes.value));
-      window.dispatchEvent(new Event('satset_contact_settings_updated'));
-    }
-
-    if (keysRes.status === 'fulfilled' && Array.isArray(keysRes.value) && keysRes.value.length > 0) {
-      localStorage.setItem('satset_apikeys_data', JSON.stringify(keysRes.value));
-      window.dispatchEvent(new Event('satset_apikeys_updated'));
-    }
-
-    if (agentsRes.status === 'fulfilled' && Array.isArray(agentsRes.value) && agentsRes.value.length > 0) {
-      localStorage.setItem('satset_ai_agents_data', JSON.stringify(agentsRes.value));
-      localStorage.setItem('satset_ai_agents', JSON.stringify(agentsRes.value));
-      window.dispatchEvent(new Event('satset_ai_agents_updated'));
-    }
-  } catch (err) {
-    console.warn('[RealtimeSync] Error hydrating data from server:', err);
+export async function hydrateDataFromServer(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && hydrationPromise) {
+    return hydrationPromise;
   }
+  if (!force && now - lastHydrationTimestamp < 5000) {
+    // Avoid hammering the backend if called multiple times within 5 seconds
+    return;
+  }
+
+  lastHydrationTimestamp = now;
+  hydrationPromise = (async () => {
+    try {
+      const [trxRes, clientsRes, codesRes, pkgsRes, qrisRes, contactRes, keysRes, agentsRes] = await Promise.allSettled([
+        fetch('/api/transactions').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/admin/clients').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/access-codes').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/packages').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/admin/qris').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/admin/contact-settings').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/apikeys').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/agents').then((r) => (r.ok ? r.json() : null)),
+      ]);
+
+      if (trxRes.status === 'fulfilled' && Array.isArray(trxRes.value)) {
+        localStorage.setItem('satset_transactions_db', JSON.stringify(trxRes.value));
+        window.dispatchEvent(new Event('transactions-updated'));
+      }
+
+      if (clientsRes.status === 'fulfilled' && Array.isArray(clientsRes.value)) {
+        localStorage.setItem('satset_clients_data', JSON.stringify(clientsRes.value));
+        window.dispatchEvent(new Event('satset_clients_updated'));
+      }
+
+      if (codesRes.status === 'fulfilled' && Array.isArray(codesRes.value)) {
+        localStorage.setItem('satset_valid_access_codes', JSON.stringify(codesRes.value));
+        window.dispatchEvent(new Event('satset_access_codes_updated'));
+      }
+
+      if (pkgsRes.status === 'fulfilled' && Array.isArray(pkgsRes.value) && pkgsRes.value.length > 0) {
+        localStorage.setItem('satset_packages_data', JSON.stringify(pkgsRes.value));
+        localStorage.setItem('satset_packages_db', JSON.stringify(pkgsRes.value));
+        window.dispatchEvent(new Event('satset_packages_updated'));
+      }
+
+      if (qrisRes.status === 'fulfilled' && qrisRes.value && typeof qrisRes.value === 'object') {
+        localStorage.setItem('satset_qris_config', JSON.stringify(qrisRes.value));
+        window.dispatchEvent(new Event('satset_qris_updated'));
+      }
+
+      if (contactRes.status === 'fulfilled' && contactRes.value && typeof contactRes.value === 'object') {
+        localStorage.setItem('satset_contact_settings', JSON.stringify(contactRes.value));
+        window.dispatchEvent(new Event('satset_contact_settings_updated'));
+      }
+
+      if (keysRes.status === 'fulfilled' && Array.isArray(keysRes.value) && keysRes.value.length > 0) {
+        localStorage.setItem('satset_apikeys_data', JSON.stringify(keysRes.value));
+        window.dispatchEvent(new Event('satset_apikeys_updated'));
+      }
+
+      if (agentsRes.status === 'fulfilled' && Array.isArray(agentsRes.value) && agentsRes.value.length > 0) {
+        localStorage.setItem('satset_ai_agents_data', JSON.stringify(agentsRes.value));
+        localStorage.setItem('satset_ai_agents', JSON.stringify(agentsRes.value));
+        window.dispatchEvent(new Event('satset_ai_agents_updated'));
+      }
+    } catch (err) {
+      console.warn('[RealtimeSync] Error hydrating data from server:', err);
+    } finally {
+      hydrationPromise = null;
+    }
+  })();
+
+  return hydrationPromise;
 }
 
 export function initRealtimeSync(): () => void {

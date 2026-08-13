@@ -308,9 +308,9 @@ class SSEManager {
 
     this.heartbeatIntervalTimer = setInterval(() => {
       const now = Date.now();
-      // If no activity for 30 seconds, treat connection as stagnant and reconnect
-      if (now - this.lastActivityTime > 30000 && this.subscribers.size > 0) {
-        console.warn('[SSEManager] Connection stagnant (>30s no message). Triggering reconnect.');
+      // If no activity for 45 seconds (3 missed server pings of 15s), treat connection as stagnant and reconnect
+      if (now - this.lastActivityTime > 45000 && this.subscribers.size > 0) {
+        console.warn('[SSEManager] Connection stagnant (>45s no message). Triggering reconnect.');
         this.lastActivityTime = Date.now();
         this.isConnected = false;
         if (this.eventSource) {
