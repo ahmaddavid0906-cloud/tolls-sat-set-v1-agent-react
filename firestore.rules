@@ -1,0 +1,90 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
+    }
+
+    // Audit Logs
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Clients
+    match /clients/{clientId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Live State Real-time Sync Layer
+    match /live_state/{docId} {
+      allow read: if true; // Publicly readable for real-time app state
+      allow write: if isAdmin(); // Server agents use Admin SDK and bypass this, so no need for 'if true'
+    }
+
+    // Transactions
+    match /transactions/{txId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // AI Agents
+    match /ai_agents/{agentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Learning Queue
+    match /learning_queue/{itemId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // System Memory
+    match /system_memory/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Packages
+    match /packages/{pkgId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Category Taxonomy
+    match /category_taxonomy/{catId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

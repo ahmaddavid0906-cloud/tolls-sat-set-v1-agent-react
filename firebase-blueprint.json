@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered app user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "name": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System audit and authentication activity log",
+      "type": "object",
+      "properties": {
+        "adminName": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 256 },
+        "details": { "type": "string", "maxLength": 2048 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "category": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["adminName", "action", "timestamp"]
+    },
+    "ClientAccess": {
+      "title": "ClientAccess",
+      "description": "Client access codes and subscription details",
+      "type": "object",
+      "properties": {
+        "accessCode": { "type": "string", "maxLength": 64 },
+        "clientName": { "type": "string", "maxLength": 128 },
+        "packageName": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "maxLength": 32 },
+        "quotaLimit": { "type": "number" },
+        "quotaUsed": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["accessCode", "clientName"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Audit and login logs"
+    },
+    "/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/ClientAccess" },
+      "description": "Client access control records"
+    }
+  }
+}
