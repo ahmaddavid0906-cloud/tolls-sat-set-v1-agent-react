@@ -51,7 +51,7 @@ function parsePhotoPromptOutput(rawText: string | null) {
     const trimmed = section.trim();
     if (!trimmed) continue;
 
-    if (/TIKTOK-OPTIMIZED AI PROMPT|NANO BANANA|MASTER PROMPT|IMAGEN/i.test(trimmed)) {
+    if (/TIKTOK|GOOGLE|AEO|NANO BANANA|MASTER PROMPT|IMAGEN|AI PROMPT/i.test(trimmed) && !/ANALISIS/i.test(trimmed)) {
       nanobananapro = cleanCodeFence(trimmed);
     } else if (/ANALISIS/i.test(trimmed)) {
       analysis = trimmed
@@ -61,11 +61,11 @@ function parsePhotoPromptOutput(rawText: string | null) {
   }
 
   if (!nanobananapro) {
-    const nanoMatch = rawText.match(/(?:TIKTOK-OPTIMIZED AI PROMPT|NANO BANANA|MASTER PROMPT)[\s\S]*?```(?:text)?\s*([\s\S]*?)```/i);
+    const nanoMatch = rawText.match(/(?:TIKTOK|GOOGLE|AEO|MASTER PROMPT)[\s\S]*?```(?:text)?\s*([\s\S]*?)```/i);
     if (nanoMatch) nanobananapro = nanoMatch[1].trim();
   }
   if (!analysis) {
-    const analMatch = rawText.match(/ANALISIS(?: ESTETIKA & RELEVANSI TIKTOK| DETAIL VISUAL FOTO)[\s\S]*?(?=\n###|\n---|$)/i);
+    const analMatch = rawText.match(/ANALISIS(?: MENDALAM RELEVANSI SCENE & ALGORITMA| ESTETIKA & RELEVANSI TIKTOK| DETAIL VISUAL FOTO)[\s\S]*?(?=\n###|\n---|$)/i);
     if (analMatch) {
       analysis = analMatch[0].replace(/.*ANALISIS.*/i, '').trim();
     }
@@ -352,11 +352,11 @@ export default function PhotoPromptGeneratorTool({ initialConcept, initialNegati
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                 Tools Generator Prompt Foto AI
                 <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-[#5b50e5] border border-indigo-200 text-xs font-semibold flex items-center gap-1">
-                  <span>🎬 TikTok Visual Hook</span>
+                  <span>🎬 TikTok Hook & 🌐 Google AEO</span>
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Unggah foto referensi atau deskripsi untuk menghasilkan prompt foto sinematik presisi tinggi.
+                Unggah foto referensi atau deskripsi konsep untuk menghasilkan prompt foto sinematik presisi tinggi dengan pemahaman scene dan entitas mendalam.
               </p>
             </div>
           </div>
@@ -583,16 +583,27 @@ export default function PhotoPromptGeneratorTool({ initialConcept, initialNegati
               <Wand2 className="w-4 h-4 text-purple-600" /> Target AI Image Generator
             </h3>
 
-            <div className="p-3.5 rounded-xl bg-indigo-50/80 border border-[#5b50e5] text-slate-900 shadow-2xs flex items-center justify-between">
-              <div>
+            <div className="p-3.5 rounded-xl bg-indigo-50/80 border border-[#5b50e5] text-slate-900 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
                 <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <span>🎬 TikTok Visual Hook</span>
+                  <span>🎬 TikTok Hook & 🌐 Google AEO</span>
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Prompt relevansi super realistis untuk FYP</div>
+                <span className="px-2 py-0.5 rounded-md bg-[#5b50e5] text-white text-[10px] font-bold shrink-0">
+                  Aktif
+                </span>
               </div>
-              <span className="px-2 py-0.5 rounded-md bg-[#5b50e5] text-white text-[10px] font-bold shrink-0">
-                Aktif
-              </span>
+              <div className="text-[10px] text-slate-600 leading-relaxed">
+                Prompt fotorealistik presisi tinggi yang dioptimalkan untuk retensi 3 detik FYP TikTok dan pemahaman semantik entitas Google Search / Lens AEO.
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-500">
+              <p className="font-semibold text-slate-700">Kompatibilitas Penuh:</p>
+              <ul className="space-y-1 text-[10px] text-slate-500">
+                <li className="flex items-center gap-1.5">✓ Midjourney v6.1 & Raw Style</li>
+                <li className="flex items-center gap-1.5">✓ Flux.1 Dev & Schnell Engine</li>
+                <li className="flex items-center gap-1.5">✓ Ideogram v2 & DALL-E 3</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -642,7 +653,7 @@ export default function PhotoPromptGeneratorTool({ initialConcept, initialNegati
                       </span>
                     </div>
                     <h3 className="text-base sm:text-lg font-bold text-white mt-0.5">
-                      📸 TikTok-Optimized AI Prompt
+                      📸 TikTok & Google AEO Master Prompt
                     </h3>
                   </div>
                 </div>
@@ -666,7 +677,7 @@ export default function PhotoPromptGeneratorTool({ initialConcept, initialNegati
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Siap langsung disalin ke Midjourney / Flux / DALL-E 3</span>
+                  <span>Format presisi tinggi untuk Midjourney v6.1 / Flux.1 / DALL-E 3</span>
                 </p>
 
                 <button
@@ -682,14 +693,14 @@ export default function PhotoPromptGeneratorTool({ initialConcept, initialNegati
                   ) : (
                     <>
                       <Copy className="w-4 h-4" />
-                      <span>📋 Salin Prompt (TikTok Optimized)</span>
+                      <span>📋 Salin Master Prompt</span>
                     </>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* ACCORDION COLLAPSIBLE: ANALISIS ESTETIKA & RELEVANSI TIKTOK */}
+            {/* ACCORDION COLLAPSIBLE: ANALISIS ESTETIKA & RELEVANSI TIKTOK & GOOGLE AEO */}
             {parsed.analysis && (
               <div className="rounded-2xl bg-white border border-slate-200/80 overflow-hidden shadow-sm transition-all">
                 <button
@@ -700,7 +711,7 @@ export default function PhotoPromptGeneratorTool({ initialConcept, initialNegati
                   <div className="flex items-center gap-2.5">
                     <FileText className="w-4 h-4 text-[#5b50e5]" />
                     <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Analisis Estetika & Relevansi TikTok
+                      Analisis Relevansi Scene & Algoritma (TikTok FYP & Google AEO)
                     </span>
                     <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-[#5b50e5] text-[10px] font-semibold border border-indigo-100">
                       Laporan Algoritma

@@ -1,13 +1,11 @@
-import { db } from '../db';
-import { sql } from 'drizzle-orm';
-import { Pool } from 'pg';
+import { testFirestoreHealth } from '../db/dbService';
 
 /**
- * Advanced Database Utility Helper
- * Provides robust transaction management and query execution with retry logic.
+ * Advanced Firebase Firestore Database Utility Helper
+ * Provides robust connection management, retry logic, and health checking.
  */
 
-// Helper to execute a query with automatic retry on transient connection failures
+// Helper to execute a database operation with automatic retry on transient failures
 export async function withRetry<T>(
   operation: () => Promise<T>,
   maxRetries = 3,
@@ -19,14 +17,20 @@ export async function withRetry<T>(
       return await operation();
     } catch (error: any) {
       attempt++;
-      const isTransient = error.code === 'ECONNRESET' || error.code === '08006' || error.code === '08003';
-      
+      const isTransient =
+        error.code === 'ECONNRESET' ||
+        error.code === 14 || // UNAVAILABLE in gRPC
+        error.code === 'UNAVAILABLE' ||
+        error.code === 4 || // DEADLINE_EXCEEDED
+        error.message?.includes('DEADLINE_EXCEEDED') ||
+        error.message?.includes('ETIMEDOUT');
+
       if (!isTransient || attempt >= maxRetries) {
-        console.error(`[DB Error] Operation failed after ${attempt} attempts:`, error);
+        console.error(`[Firebase DB Error] Operation failed after ${attempt} attempts:`, error);
         throw error;
       }
-      
-      console.warn(`[DB Warning] Transient error, retrying (${attempt}/${maxRetries}) in ${delayMs}ms...`);
+
+      console.warn(`[Firebase DB Warning] Transient error, retrying (${attempt}/${maxRetries}) in ${delayMs}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
     }
   }
@@ -34,22 +38,32 @@ export async function withRetry<T>(
 }
 
 /**
- * Perform a database health check.
+ * Perform a Firebase Firestore database health check.
  * Useful for monitoring endpoints and liveness probes.
  */
-export async function checkDatabaseHealth(): Promise<{ status: string; latencyMs: number; error?: string }> {
+export async function checkDatabaseHealth(): Promise<{
+  status: string;
+  latencyMs: number;
+  error?: string;
+  projectId?: string;
+  firestoreDatabaseId?: string;
+}> {
   const start = Date.now();
   try {
-    await db.execute(sql`SELECT 1`);
+    const res = await testFirestoreHealth();
     return {
-      status: 'healthy',
-      latencyMs: Date.now() - start
+      status: res.ok ? 'healthy' : 'degraded',
+      latencyMs: Date.now() - start,
+      error: res.ok ? undefined : res.message,
+      projectId: res.projectId,
+      firestoreDatabaseId: res.firestoreDatabaseId,
     };
   } catch (error: any) {
     return {
       status: 'unhealthy',
       latencyMs: Date.now() - start,
-      error: error.message
+      error: error.message || String(error),
     };
   }
 }
+

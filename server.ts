@@ -526,18 +526,24 @@ Gunakan konteks pengetahuan di atas untuk mengoptimalkan ketajaman output script
     const keyCandidates = await getClientIsolatedKeys(customApiKeyHeader, clientAccessCode);
     
     const primaryModel = normalizeGeminiModel(userSelectedModel);
-    let candidateModels = Array.from(new Set([
-      primaryModel,
-      'gemini-3.6-flash',
+    
+    // Top model hierarchy priority: Flagship Pro/Reasoning -> High Performance Flash -> Lite Fallback
+    const TOP_MODEL_HIERARCHY = [
       'gemini-3.1-pro-preview',
       'gemini-3.1-pro',
-      'gemini-3.1-flash-lite',
+      'gemini-3.6-flash',
       'gemini-2.5-pro',
       'gemini-2.5-flash',
+      'gemini-3.1-flash-lite',
       'gemini-2.5-flash-lite'
+    ];
+
+    let candidateModels = Array.from(new Set([
+      primaryModel,
+      ...TOP_MODEL_HIERARCHY
     ])).filter((m): m is string => Boolean(m && m.trim().length > 0));
 
-    // Calculate routing plan if targetTier provided
+    // Calculate routing plan prioritizing top models
     try {
        const plan = getModelRoutingPlan(userSelectedModel, customApiKeyHeader);
        if (plan && plan.targetModels && plan.targetModels.length > 0) {
@@ -545,17 +551,11 @@ Gunakan konteks pengetahuan di atas untuk mengoptimalkan ketajaman output script
           candidateModels = Array.from(new Set([
             primaryModel,
             ...mappedModels,
-            'gemini-3.6-flash',
-            'gemini-3.1-pro-preview',
-            'gemini-3.1-pro',
-            'gemini-3.1-flash-lite',
-            'gemini-2.5-pro',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite'
-          ]));
+            ...TOP_MODEL_HIERARCHY
+          ])).filter((m): m is string => Boolean(m && m.trim().length > 0));
        }
     } catch (e) {
-       logger.warn('[Routing] Failed to calculate model routing plan, using fallback list');
+       logger.warn('[Routing] Failed to calculate model routing plan, using top model fallback hierarchy');
     }
 
     if (keyCandidates.length === 0) {
@@ -1074,39 +1074,51 @@ ${promptText}`
 
       const userSelectedModel = model === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' : 'gemini-3.6-flash';
 
-      const promptText = `Anda adalah Director of Photography (DoP) Sinematik Kelas Dunia, Pakar Algoritma Visual TikTok, & Ahli Prompt Engineer AI.
-Tugas Anda adalah menganalisis gambar atau deskripsi konsep foto input ini dan mengubahnya menjadi prompt AI Generator yang menghasilkan gambar super realistis dengan relevansi tinggi terhadap estetika FYP TikTok. Gambar harus memiliki daya tarik visual (*visual hook*) yang tinggi agar mudah dikenali dan dipromosikan oleh algoritma TikTok.
+      const promptText = `Anda adalah Master Director of Photography (DoP) Sinematik Global, Ahli Algoritma Visual TikTok FYP, dan Spesialis Multimodal Google SEO / AEO (Answer Engine Optimization) & Entity Search.
 
-Target Utama AI Generator: Midjourney v6 / Flux.1 / DALL-E 3
-Gaya Visual Foto: ${photoStyle.toUpperCase()} (Sesuaikan dengan sentuhan estetika viral TikTok)
-Target Aspect Ratio: ${aspectRatio}
+TUGAS UTAMA:
+Analisis secara SUPER PRESISI input gambar atau teks konsep dari pengguna, lalu transformasikan menjadi Master Prompt AI Image Generator (Midjourney v6.1 / Flux.1 / DALL-E 3) yang memiliki RELEVANSI TINGGI, REKAYASA SCENE MENDALAM, VISUAL HOOK TIKTOK KUAT, dan MEMENUHI STANDAR MULTIMODAL GOOGLE SEARCH / AEO TERBARU.
 
-PENTING: JANGAN menambahkan teks pembuka selain format yang diminta. Blok prompt (\`\`\`text) HARUS menjadi hal pertama atau langsung berada di bawah header pertama.
+PANDUAN RELEVANSI & PRESISI:
+1. JIKA INPUT BERUPA KONSEP TEKS:
+   - Bedah secara semantik seluruh konteks cerita, subjek inti, aktivitas, lokasi spesifik, mood emosional, dan detail prop.
+   - Terapkan pemetaan entitas (Google AEO): sebutkan material nyata (misal: unbleached organic linen, brushed brass, weathered mahogany), nama arsitektur/setting, dan kondisi atmosfer yang jelas agar mudah diindeks AI Search Engine.
+   - Bangun visual hook 3-detik pertama untuk TikTok: pose dinamis/tatapan mata tajam, kontras tinggi, ekspresi mikroskopis, dan framing sinematik.
 
-Buatkan output terstruktur dalam format Markdown berikut secara presisi:
+2. JIKA INPUT BERUPA FOTO REFERENSI (IMAGE):
+   - Lakukan dekonstruksi visual mendalam: identifikasi anatomi wajah, gaya rambut, busana, sudut kamera (eye-level, low-angle, high-angle), arah & temperatur cahaya (Kelvin, key/fill/rim light), palet warna, dan latar belakang.
+   - Pertahankan identitas visual dan esensi komposisi referensi, namun tingkatkan menjadi resolusi sinematik 8K dengan tekstur fotorealistik murni (micro skin pores, subsurface scattering, authentic lens grain, tanpa kesan AI plastik/halus buatan).
+
+3. PARAMETER TEKNIS FOTOGRAFI WAJIB:
+   - Tipe Kamera & Lensa: (Contoh: Shot on Hasselblad H6D-100c / Sony A7R V / Arri Alexa LF, Zeiss Master Prime 85mm f/1.2 atau 35mm f/1.4).
+   - Pencahayaan: (Contoh: Volumetric golden hour side lighting, softbox diffusion at 45 degrees, subtle blue rim lighting, ray-traced reflections).
+   - Detail Tekstur: (Contoh: Ultra-detailed skin texture, authentic fabric weave, natural specular reflections, sharp edge definition).
+   - Target Aspect Ratio: ${aspectRatio}
+   - Preset Gaya: ${photoStyle.toUpperCase()}
+
+FORMAT OUTPUT WAJIB (Gunakan format Markdown persis seperti di bawah, blok prompt HARUS dalam bahasa Inggris agar optimal di semua AI generator):
 
 ### 📸 TIKTOK-OPTIMIZED AI PROMPT (SUPER REALISTIS & SIAP COPY)
 \`\`\`text
-[Photography Type]: Hyper-realistic ${photoStyle} photography, TikTok aesthetic, highly engaging visual hook.
-[Subject & Styling]: [Deskripsi sangat detail subjek: umur, etnis, riasan, ekspresi wajah mikro, pose dinamis, tekstur kain/pakaian yang sangat presisi].
-[Environment & Context]: [Latar belakang storytelling, elemen pendukung, arsitektur, prop, palet warna sinematik].
-[Lighting & Physics]: [Arah cahaya presisi: softbox illumination, rim lighting, specular highlights, golden hour/neon glow, raytraced reflections, ambient color temperature].
-[Camera & Optics]: Shot on Arri Alexa 65 / Sony A7R V / Hasselblad, 85mm f/1.2 prime lens, sharp focus on subject, ultra-shallow depth of field, stunning natural optical bokeh.
-[Image Quality & Texture]: 8k resolution, raw photo, photorealistic micro skin pores, authentic cinematic grain, ultra-detailed textures, no artificial smooth gloss, commercial high-end production standard, aspect ratio ${aspectRatio.replace('--ar ', '')}.
+[Master Shot]: Hyper-realistic ${photoStyle} photography, TikTok FYP visual hook aesthetic, Google AEO high-relevance semantic framing.
+[Subject & Identity]: [Deskripsi super spesifik subjek: usia, fitur wajah otentik, ekspresi mikro yang menarik perhatian, pose dinamis, busana & tekstur bahan detail].
+[Scene Context & Environment]: [Latar belakang storytelling kaya entitas, detail arsitektur/ruang, elemen pendukung, kedalaman spasial sinematik].
+[Lighting & Atmospheric Physics]: [Pencahayaan presisi: arah key light, soft fill, subtle rim light, temperatur warna ambient, volumetric rays, bayangan lembut].
+[Camera, Optics & Composition]: [Kamera profesional, panjang lensa (focal length), aperture f-stop ultra-lebar, fokus tajam pada subjek, natural optical depth of field / creamy bokeh].
+[Texture & Rendering Quality]: 8k UHD resolution, raw authentic documentary photo, natural micro skin pores, fabric threading, zero artificial airbrushing, photorealistic raytraced reflections, ${aspectRatio} --style raw --v 6.1
 \`\`\`
 
 ---
 
-### 🔍 ANALISIS ESTETIKA & RELEVANSI TIKTOK
-- **Subjek & Visual Hook**: [Analisis mengapa subjek ini menarik perhatian dalam 3 detik pertama]
-- **Setting & Storytelling**: [Bagaimana latar belakang menciptakan konteks yang relevan dengan tren TikTok saat ini]
-- **Pencahayaan & Atmosfer**: [Analisis penggunaan cahaya untuk menonjolkan tekstur produk atau emosi subjek]
-- **Spesifikasi Optik & Lensa**: [Estimasi jarak fokus dan pengaturan kamera untuk estetika profesional]
-- **Tekstur & Palet Warna**: [Color grading dan kontras yang membuat gambar 'pop' di algoritma TikTok]`;
+### 🔍 ANALISIS MENDALAM RELEVANSI SCENE & ALGORITMA
+- **🎯 Konteks Scene & Semantic Entity (Google SEO/AEO)**: [Penjelasan entitas subjek, lokasi, material, dan konteks cerita yang membuat gambar mudah dikenali oleh algoritma Google Lens dan AI Search Overview].
+- **⚡ TikTok Visual Hook (3-Second Retention)**: [Analisis elemen visual utama yang mengunci pandangan audiens di 3 detik pertama saat scrolling FYP].
+- **💡 Pencahayaan, Optik & Komposisi Kamera**: [Setup teknis pencahayaan studio/alam, panjang lensa, aperture, dan depth-of-field untuk menghasilkan dimensi gambar 3D yang hidup].
+- **🎨 Color Grading & Tekstur Otentik**: [Palet warna sinematik, tone harmony, dan mikro tekstur alami yang menjamin gambar tampak seperti foto nyata produksi komersial].`;
 
       let extendedPromptText = promptText;
       if (negativePrompt && negativePrompt.trim()) {
-        extendedPromptText += `\n\nTAMBAHKAN TAG BERIKUT PADA PROMPT: [Negative Prompt]: ${negativePrompt.trim()}`;
+        extendedPromptText += `\n\nTAMBAHKAN TAG NEGATIVE PROMPT PADA AKHIR BLOK: [Negative Prompt]: ${negativePrompt.trim()}`;
       }
 
       let promptPayload: any = {
@@ -1114,7 +1126,7 @@ Buatkan output terstruktur dalam format Markdown berikut secara presisi:
           parts: []
         },
         config: {
-          systemInstruction: "You are an elite Director of Photography (DoP) and TikTok Visual Algorithm Expert. Your task is to convert user inputs into hyper-realistic, high-relevance AI image prompts specifically optimized for TikTok's visual algorithm. Emphasize photorealistic textures, dynamic visual hooks, and highly structured formatting for AI generators like Midjourney v6, Flux.1, and DALL-E 3.",
+          systemInstruction: "You are the world's leading Director of Photography, TikTok Visual Hook Strategist, and Google AEO Multimodal SEO Specialist. Generate highly precise, hyper-realistic AI image prompts with deep scene comprehension, authentic camera physics, and complete visual algorithm compliance.",
         }
       };
 

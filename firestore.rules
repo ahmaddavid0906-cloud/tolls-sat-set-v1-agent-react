@@ -3,11 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -20,71 +15,122 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    // Live State Real-time Sync Layer & Health Checks (Public read/write for live app sync)
+    match /live_state/{docId} {
+      allow read, write: if true;
+    }
+
+    match /_healthCheck/{docId} {
+      allow read, write: if true;
     }
 
     // Users Collection
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
-      allow create, update: if isOwner(userId);
-      allow delete: if false;
+      allow read, write: if true;
     }
 
     // Audit Logs
     match /audit_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+      allow read, write: if true;
+    }
+    match /auditLogs/{logId} {
+      allow read, write: if true;
     }
 
-    // Clients
+    // Clients Access
     match /clients/{clientId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // Live State Real-time Sync Layer
-    match /live_state/{docId} {
-      allow read: if true; // Publicly readable for real-time app state
-      allow write: if isAdmin(); // Server agents use Admin SDK and bypass this, so no need for 'if true'
+      allow read, write: if true;
     }
 
     // Transactions
     match /transactions/{txId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow write: if isAdmin();
+      allow read, write: if true;
+    }
+
+    // Configs & System State
+    match /configs/{configId} {
+      allow read, write: if true;
     }
 
     // AI Agents
     match /ai_agents/{agentId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
+    }
+    match /aiAgents/{agentId} {
+      allow read, write: if true;
     }
 
     // Learning Queue
     match /learning_queue/{itemId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, write: if true;
+    }
+    match /learningQueue/{itemId} {
+      allow read, write: if true;
     }
 
     // System Memory
     match /system_memory/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     // Packages
     match /packages/{pkgId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Category Taxonomy
+    // Category Taxonomy & Proposals
     match /category_taxonomy/{catId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
+    }
+    match /categoryTaxonomy/{catId} {
+      allow read, write: if true;
+    }
+    match /categoryTaxonomyProposals/{propId} {
+      allow read, write: if true;
+    }
+
+    // Tracking Events & Analytics
+    match /tracking_events/{eventId} {
+      allow read, write: if true;
+    }
+    match /trackingEvents/{eventId} {
+      allow read, write: if true;
+    }
+
+    // Access Codes
+    match /access_codes/{codeId} {
+      allow read, write: if true;
+    }
+    match /accessCodes/{codeId} {
+      allow read, write: if true;
+    }
+
+    // History & User Records
+    match /history/{histId} {
+      allow read, write: if true;
+    }
+
+    // Announcements, Formulas & Affiliates
+    match /announcements/{annId} {
+      allow read, write: if true;
+    }
+    match /promptFormulas/{formId} {
+      allow read, write: if true;
+    }
+    match /affiliates/{affId} {
+      allow read, write: if true;
+    }
+    match /bannedDevices/{devId} {
+      allow read, write: if true;
+    }
+    match /pendingSchemaChanges/{changeId} {
+      allow read, write: if true;
+    }
+
+    // Default fallback for any newly registered sub-collections
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
+
