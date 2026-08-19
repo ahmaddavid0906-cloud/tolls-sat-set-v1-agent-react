@@ -285,17 +285,24 @@ export default function UserLayout({ session, onLogout, onGoToAdmin }: UserLayou
     setActiveTab('prompt');
   };
 
-  const handleFetchTikTokVideo = async (e?: React.FormEvent) => {
+  const handleFetchTikTokVideo = async (e?: React.FormEvent, overrideUrl?: string) => {
     if (e) e.preventDefault();
-    const targetUrl = tiktokInputUrl.trim();
+    const rawInput = (overrideUrl || tiktokInputUrl).trim();
 
-    if (!targetUrl) {
+    if (!rawInput) {
       setTiktokInputError('Silakan masukkan link URL TikTok.');
       return;
     }
 
-    if (!targetUrl.includes('tiktok.com')) {
-      setTiktokInputError('URL tidak valid. Pastikan menyalin tautan resmi dari TikTok.');
+    // Auto extract clean URL if user pastes share text containing URL
+    let targetUrl = rawInput;
+    const urlMatch = rawInput.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      targetUrl = urlMatch[0].replace(/[)\]}>,;."']+$/, '');
+    }
+
+    if (!targetUrl.includes('tiktok.com') && !targetUrl.includes('douyin.com')) {
+      setTiktokInputError('URL tidak valid. Pastikan menyalin tautan resmi dari TikTok (contoh: https://vt.tiktok.com/xxxx).');
       return;
     }
 
@@ -310,21 +317,26 @@ export default function UserLayout({ session, onLogout, onGoToAdmin }: UserLayou
       });
 
       const data = await safeParseJson(res);
+      if (data.error && !data.hdplay && !data.play) {
+        throw new Error(data.error || 'Gagal memproses link TikTok.');
+      }
+
       const videoSource = data.hdplay || data.play || data.wmplay;
 
       if (!videoSource) {
-        throw new Error('Gagal mendapatkan file video dari tautan TikTok tersebut.');
+        throw new Error('Gagal mendapatkan file video dari tautan TikTok tersebut. Pastikan video publik.');
       }
 
       const proxyUrl = `/api/tiktok/proxy?url=${encodeURIComponent(videoSource)}`;
       const videoRes = await fetch(proxyUrl);
 
       if (!videoRes.ok) {
-        throw new Error('Gagal mengunduh berkas video TikTok.');
+        throw new Error('Gagal mengunduh berkas video TikTok dari proxy.');
       }
 
       const blob = await videoRes.blob();
-      const safeTitle = (data.title || 'tiktok_video').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+      const rawTitle = (data.title || 'tiktok_video').replace(/[^a-zA-Z0-9]/g, '_');
+      const safeTitle = rawTitle.slice(0, 30) || 'video';
       const tiktokFile = new File([blob], `@${data.author?.uniqueId || 'tiktok'}_${safeTitle}.mp4`, {
         type: 'video/mp4',
       });
@@ -345,9 +357,12 @@ export default function UserLayout({ session, onLogout, onGoToAdmin }: UserLayou
       if (text) {
         setTiktokInputUrl(text);
         setTiktokInputError(null);
+        if (text.includes('tiktok.com') || text.includes('douyin.com')) {
+          handleFetchTikTokVideo(undefined, text);
+        }
       }
     } catch (e) {
-      setTiktokInputError('Gagal mengakses clipboard. Silakan tempel secara manual.');
+      setTiktokInputError('Tidak dapat mengakses clipboard secara otomatis. Silakan tempel dengan Ctrl+V.');
     }
   };
 
@@ -1317,7 +1332,7 @@ export default function UserLayout({ session, onLogout, onGoToAdmin }: UserLayou
                         <form onSubmit={handleFetchTikTokVideo} className="space-y-3">
                           <div className="relative flex items-center">
                             <input
-                              type="url"
+                              type="text"
                               required
                               placeholder="Contoh: https://vt.tiktok.com/xxxx atau https://www.tiktok.com/@user/video/xxxx"
                               value={tiktokInputUrl}

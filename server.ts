@@ -73,6 +73,7 @@ import { governAEOPipelineExecution } from './src/agents/agentAeoPipelineGoverno
 import { superviseMetaAutoBuild } from './src/agents/agentMetaAutoBuildSupervisor';
 import { dispatchRealtimeBroadcast } from './src/agents/agentRealtimeBroadcastDispatcher';
 import { auditPaymentAndClientHardening } from './src/agents/agentPaymentClientHardeningAuditor';
+import { runStructuredPromptArchitect, isStructureSchemaConsistent } from './src/agents/agentStructuredPromptArchitect';
 import { buildAEOPipelinePrompt, formatAEOOutputToMarkdown, AEOPipelineResult } from './src/agents/aeoAgentPipeline';
 import {
   evaluateGrowthAndScale,
@@ -406,7 +407,7 @@ Gunakan konteks pengetahuan di atas untuk mengoptimalkan ketajaman output script
   const TIKTOK_CACHE_TTL_MS = 10 * 60 * 1000;
 
   // Server-side response cache for AI prompt generations to save quota (2 Hour TTL)
-  const promptResponseCache = new Map<string, { timestamp: number; text: string; modelUsed: string }>();
+  const promptResponseCache = new Map<string, { timestamp: number; text: string; modelUsed: string; promptArchitect?: any }>();
   const PROMPT_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
   const CLIENTS_FILE_PATH = path.join(process.cwd(), 'clients.json');
@@ -800,7 +801,12 @@ Gunakan konteks pengetahuan di atas untuk mengoptimalkan ketajaman output script
 
         if (cached && Date.now() - cached.timestamp < PROMPT_CACHE_TTL_MS) {
           logger.info('[Prompt Cache Hit - Saved Quota]', cacheKey);
-          return res.json({ prompt: cached.text, modelUsed: cached.modelUsed, cached: true });
+          return res.json({
+            prompt: cached.text,
+            modelUsed: cached.modelUsed,
+            promptArchitect: cached.promptArchitect,
+            cached: true
+          });
         }
       }
 
@@ -955,6 +961,26 @@ ${promptText}`
 
       const result = await callGeminiWithFallback(userSelectedModel, promptPayload, customApiKey, clientAccessCode);
 
+      // Multi-Agent Step: Run Structured Prompt Architect to refine & enrich without breaking markdown schema
+      let finalPromptText = result.text;
+      let architectMetadata: any = undefined;
+
+      try {
+        const architectResult = await runStructuredPromptArchitect(
+          result.text,
+          targetAI || 'general'
+        );
+        architectMetadata = architectResult;
+
+        if (architectResult.isOptimized && isStructureSchemaConsistent(result.text, architectResult.finalPrompt)) {
+          finalPromptText = architectResult.finalPrompt;
+        } else if (architectResult.isOptimized) {
+          logger.warn('[StructuredPromptArchitect] Video prompt output failed structural schema consistency check, falling back to raw model draft.');
+        }
+      } catch (archErr) {
+        logger.warn('[StructuredPromptArchitect] Video prompt enhancement notice:', archErr);
+      }
+
       // Record successful execution & train system memory
       recordExecutionAndUpgrade('videoPrompt');
 
@@ -980,10 +1006,19 @@ ${promptText}`
       if (useCache) {
         const cacheInput = `${mimeType}_${base64Data.slice(0, 500)}_${base64Data.length}_${model}_${targetAI}_${segmentDuration}`;
         const cacheKey = crypto.createHash('sha256').update(cacheInput).digest('hex');
-        promptResponseCache.set(cacheKey, { timestamp: Date.now(), text: result.text, modelUsed: result.modelUsed });
+        promptResponseCache.set(cacheKey, {
+          timestamp: Date.now(),
+          text: finalPromptText,
+          modelUsed: result.modelUsed,
+          promptArchitect: architectMetadata
+        });
       }
 
-      res.json({ prompt: result.text, modelUsed: result.modelUsed });
+      res.json({
+        prompt: finalPromptText,
+        modelUsed: result.modelUsed,
+        promptArchitect: architectMetadata
+      });
     } catch (error: any) {
       logger.error('Error generating video prompt:', error);
       activeTask.status = 'failed';
@@ -1068,7 +1103,12 @@ ${promptText}`
 
         if (cached && Date.now() - cached.timestamp < PROMPT_CACHE_TTL_MS) {
           logger.info('[Photo Prompt Cache Hit - Saved Quota]', cacheKey);
-          return res.json({ prompt: cached.text, modelUsed: cached.modelUsed, cached: true });
+          return res.json({
+            prompt: cached.text,
+            modelUsed: cached.modelUsed,
+            promptArchitect: cached.promptArchitect,
+            cached: true
+          });
         }
       }
 
@@ -1162,6 +1202,26 @@ FORMAT OUTPUT WAJIB (Gunakan format Markdown persis seperti di bawah, blok promp
 
       const result = await callGeminiWithFallback(userSelectedModel, promptPayload, customApiKey, clientAccessCode);
 
+      // Multi-Agent Step: Run Structured Prompt Architect to refine & enrich without breaking markdown schema
+      let finalPromptText = result.text;
+      let architectMetadata: any = undefined;
+
+      try {
+        const architectResult = await runStructuredPromptArchitect(
+          result.text,
+          targetGenerator || photoStyle || 'general'
+        );
+        architectMetadata = architectResult;
+
+        if (architectResult.isOptimized && isStructureSchemaConsistent(result.text, architectResult.finalPrompt)) {
+          finalPromptText = architectResult.finalPrompt;
+        } else if (architectResult.isOptimized) {
+          logger.warn('[StructuredPromptArchitect] Photo prompt output failed structural schema consistency check, falling back to raw model draft.');
+        }
+      } catch (archErr) {
+        logger.warn('[StructuredPromptArchitect] Photo prompt enhancement notice:', archErr);
+      }
+
       // Record successful execution & train system memory
       recordExecutionAndUpgrade('photoPrompt');
 
@@ -1187,10 +1247,19 @@ FORMAT OUTPUT WAJIB (Gunakan format Markdown persis seperti di bawah, blok promp
       if (useCache) {
         const cacheInput = `photo_${mimeType}_${base64Data.slice(0, 500)}_${base64Data.length}_${model}_${targetGenerator}_${photoStyle}_${aspectRatio}`;
         const cacheKey = crypto.createHash('sha256').update(cacheInput).digest('hex');
-        promptResponseCache.set(cacheKey, { timestamp: Date.now(), text: result.text, modelUsed: result.modelUsed });
+        promptResponseCache.set(cacheKey, {
+          timestamp: Date.now(),
+          text: finalPromptText,
+          modelUsed: result.modelUsed,
+          promptArchitect: architectMetadata
+        });
       }
 
-      res.json({ prompt: result.text, modelUsed: result.modelUsed });
+      res.json({
+        prompt: finalPromptText,
+        modelUsed: result.modelUsed,
+        promptArchitect: architectMetadata
+      });
     } catch (error: any) {
       logger.error('Error generating photo prompt:', error);
       activeTask.status = 'failed';
@@ -2555,7 +2624,19 @@ ${attachedFile.textContent || attachedFile.content || '(Teks berkas terlampir)'}
 
   initServerAutoTrainerScheduler();
 
-  // API endpoint for TikTok Video Info Downloader with Cache & Multi-Fallback
+  // Helper to extract clean URL from text (e.g. from user sharing text from TikTok app)
+  function extractUrlFromText(text: string): string {
+    if (!text || typeof text !== 'string') return '';
+    const trimmed = text.trim();
+    const urlMatch = trimmed.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      // Strip trailing punctuation often attached from copy-paste
+      return urlMatch[0].replace(/[)\]}>,;."']+$/, '');
+    }
+    return trimmed;
+  }
+
+  // API endpoint for TikTok Video Info Downloader with Cache, Auto-Unshorten & Multi-Fallback
   app.post('/api/tiktok/info', async (req, res) => {
     try {
       const { url } = req.body;
@@ -2563,7 +2644,10 @@ ${attachedFile.textContent || attachedFile.content || '(Teks berkas terlampir)'}
         return res.status(400).json({ error: 'URL TikTok tidak boleh kosong' });
       }
 
-      const cleanUrl = url.trim();
+      let cleanUrl = extractUrlFromText(url);
+      if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = 'https://' + cleanUrl;
+      }
 
       // Check Cache
       const cached = tiktokCache.get(cleanUrl);
@@ -2572,90 +2656,150 @@ ${attachedFile.textContent || attachedFile.content || '(Teks berkas terlampir)'}
         return res.json(cached.data);
       }
 
-      // Provider 1: TikWM
-      try {
-        const response = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}&hd=1`, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
+      // Resolve redirect for shortlinks (vt.tiktok.com, vm.tiktok.com, /t/)
+      let resolvedUrl = cleanUrl;
+      if (cleanUrl.includes('vt.tiktok.com') || cleanUrl.includes('vm.tiktok.com') || cleanUrl.includes('/t/')) {
+        try {
+          const headRes = await fetch(cleanUrl, {
+            method: 'HEAD',
+            redirect: 'follow',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+            }
+          });
+          if (headRes.ok && headRes.url && headRes.url !== cleanUrl) {
+            resolvedUrl = headRes.url;
           }
-        });
-
-        const data = await response.json();
-
-        if (data && data.code === 0 && data.data) {
-          const v = data.data;
-          const result = {
-            id: v.id,
-            title: v.title || 'TikTok Video',
-            cover: v.cover || v.origin_cover,
-            play: v.play, // No watermark video URL
-            wmplay: v.wmplay, // Watermarked video URL
-            hdplay: v.hdplay || v.play, // HD video URL
-            music: v.music, // Audio URL
-            musicTitle: v.music_info?.title || 'Original Audio',
-            musicAuthor: v.music_info?.author || v.author?.nickname || '',
-            author: {
-              id: v.author?.id,
-              uniqueId: v.author?.unique_id,
-              nickname: v.author?.nickname,
-              avatar: v.author?.avatar,
-            },
-            stats: {
-              playCount: v.play_count || 0,
-              diggCount: v.digg_count || 0,
-              commentCount: v.comment_count || 0,
-              shareCount: v.share_count || 0,
-            },
-            images: v.images || null,
-          };
-
-          tiktokCache.set(cleanUrl, { timestamp: Date.now(), data: result });
-          return res.json(result);
+        } catch (e) {
+          // Ignore redirect error, proceed with original
         }
-      } catch (e) {
-        logger.warn('TikWM API failed, trying fallback...', e);
       }
 
-      // Provider 2: Tiklydown
-      try {
-        const fallbackRes = await fetch(`https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(cleanUrl)}`);
-        const fallbackData = await fallbackRes.json();
-        if (fallbackData && (fallbackData.video || fallbackData.url)) {
-          const result = {
-            id: fallbackData.id || String(Date.now()),
-            title: fallbackData.title || fallbackData.video?.caption || 'TikTok Video',
-            cover: fallbackData.cover || fallbackData.video?.cover,
-            play: fallbackData.video?.noWatermark || fallbackData.url,
-            wmplay: fallbackData.video?.watermark || fallbackData.url,
-            hdplay: fallbackData.video?.noWatermark || fallbackData.url,
-            music: fallbackData.music?.url || fallbackData.audio,
-            musicTitle: fallbackData.music?.title || 'Original Audio',
-            musicAuthor: fallbackData.music?.author || '',
-            author: {
-              id: fallbackData.author?.id || '',
-              uniqueId: fallbackData.author?.unique_id || fallbackData.author?.username || 'user',
-              nickname: fallbackData.author?.nickname || fallbackData.author?.name || 'TikTok User',
-              avatar: fallbackData.author?.avatar || '',
-            },
-            stats: {
-              playCount: fallbackData.stats?.playCount || 0,
-              diggCount: fallbackData.stats?.likeCount || 0,
-              commentCount: fallbackData.stats?.commentCount || 0,
-              shareCount: fallbackData.stats?.shareCount || 0,
-            },
-            images: fallbackData.images || null,
-          };
+      const urlsToTry = Array.from(new Set([cleanUrl, resolvedUrl]));
 
-          tiktokCache.set(cleanUrl, { timestamp: Date.now(), data: result });
-          return res.json(result);
+      // Provider 1: TikWM
+      for (const targetUrl of urlsToTry) {
+        try {
+          const response = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}&hd=1`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/plain, */*',
+            }
+          });
+
+          const data = await response.json();
+
+          if (data && data.code === 0 && data.data) {
+            const v = data.data;
+            const result = {
+              id: v.id || String(Date.now()),
+              title: v.title || 'TikTok Video',
+              cover: v.cover || v.origin_cover || '',
+              play: v.play || '', // No watermark video URL
+              wmplay: v.wmplay || v.play || '', // Watermarked video URL
+              hdplay: v.hdplay || v.play || '', // HD video URL
+              music: v.music || '', // Audio URL
+              musicTitle: v.music_info?.title || 'Original Audio',
+              musicAuthor: v.music_info?.author || v.author?.nickname || '',
+              author: {
+                id: v.author?.id || '',
+                uniqueId: v.author?.unique_id || 'tiktok_user',
+                nickname: v.author?.nickname || 'TikTok Creator',
+                avatar: v.author?.avatar || '',
+              },
+              stats: {
+                playCount: v.play_count || 0,
+                diggCount: v.digg_count || 0,
+                commentCount: v.comment_count || 0,
+                shareCount: v.share_count || 0,
+              },
+              images: v.images || null,
+            };
+
+            tiktokCache.set(cleanUrl, { timestamp: Date.now(), data: result });
+            if (resolvedUrl !== cleanUrl) {
+              tiktokCache.set(resolvedUrl, { timestamp: Date.now(), data: result });
+            }
+            return res.json(result);
+          }
+        } catch (e) {
+          logger.warn('TikWM API failed for URL, trying next provider...', e);
         }
-      } catch (e) {
-        logger.warn('Tiklydown API failed:', e);
+      }
+
+      // Provider 2: Tiklydown (v1 / v4)
+      for (const targetUrl of urlsToTry) {
+        try {
+          const fallbackRes = await fetch(`https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(targetUrl)}`);
+          const fallbackData = await fallbackRes.json();
+          if (fallbackData && (fallbackData.video || fallbackData.url)) {
+            const result = {
+              id: fallbackData.id || String(Date.now()),
+              title: fallbackData.title || fallbackData.video?.caption || 'TikTok Video',
+              cover: fallbackData.cover || fallbackData.video?.cover || '',
+              play: fallbackData.video?.noWatermark || fallbackData.url || '',
+              wmplay: fallbackData.video?.watermark || fallbackData.url || '',
+              hdplay: fallbackData.video?.noWatermark || fallbackData.url || '',
+              music: fallbackData.music?.url || fallbackData.audio || '',
+              musicTitle: fallbackData.music?.title || 'Original Audio',
+              musicAuthor: fallbackData.music?.author || '',
+              author: {
+                id: fallbackData.author?.id || '',
+                uniqueId: fallbackData.author?.unique_id || fallbackData.author?.username || 'user',
+                nickname: fallbackData.author?.nickname || fallbackData.author?.name || 'TikTok User',
+                avatar: fallbackData.author?.avatar || '',
+              },
+              stats: {
+                playCount: fallbackData.stats?.playCount || 0,
+                diggCount: fallbackData.stats?.likeCount || 0,
+                commentCount: fallbackData.stats?.commentCount || 0,
+                shareCount: fallbackData.stats?.shareCount || 0,
+              },
+              images: fallbackData.images || null,
+            };
+
+            tiktokCache.set(cleanUrl, { timestamp: Date.now(), data: result });
+            return res.json(result);
+          }
+        } catch (e) {
+          logger.warn('Tiklydown API failed:', e);
+        }
+      }
+
+      // Provider 3: TikTok Official oEmbed (for metadata if download APIs are temporarily throttled)
+      try {
+        const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(resolvedUrl)}`);
+        if (oembedRes.ok) {
+          const oembedData = await oembedRes.json();
+          if (oembedData && oembedData.title) {
+            const result = {
+              id: String(Date.now()),
+              title: oembedData.title || 'TikTok Video',
+              cover: oembedData.thumbnail_url || '',
+              play: '',
+              wmplay: '',
+              hdplay: '',
+              music: '',
+              musicTitle: 'Original Audio',
+              musicAuthor: oembedData.author_name || '',
+              author: {
+                id: oembedData.author_unique_id || '',
+                uniqueId: oembedData.author_unique_id || 'user',
+                nickname: oembedData.author_name || 'TikTok User',
+                avatar: '',
+              },
+              stats: { playCount: 0, diggCount: 0, commentCount: 0, shareCount: 0 },
+              images: null,
+            };
+            return res.json(result);
+          }
+        }
+      } catch (oembedErr) {
+        // Continue to error
       }
 
       return res.status(404).json({
-        error: 'Gagal mengambil informasi video TikTok. Pastikan URL video publik & valid.'
+        error: 'Gagal mengambil informasi video TikTok. Pastikan tautan video berstatus publik dan valid.'
       });
 
     } catch (error: any) {
@@ -2664,7 +2808,7 @@ ${attachedFile.textContent || attachedFile.content || '(Teks berkas terlampir)'}
     }
   });
 
-  // API endpoint for streaming/proxying media to bypass CORS and force download
+  // API endpoint for streaming/proxying media to bypass CORS, support Range seeking, and force download
   app.get('/api/tiktok/proxy', async (req, res) => {
     try {
       const mediaUrl = req.query.url as string;
@@ -2675,24 +2819,54 @@ ${attachedFile.textContent || attachedFile.content || '(Teks berkas terlampir)'}
         return res.status(400).send('URL query parameter is required');
       }
 
+      // Set CORS Headers for Canvas/WebGL & Video Player compatibility
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+
+      if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+      }
+
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': 'https://www.tiktok.com/',
+      };
+
+      if (req.headers.range) {
+        headers['Range'] = req.headers.range;
+      }
+
       const mediaRes = await fetch(mediaUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://www.tiktok.com/',
-        }
+        headers,
       });
 
-      if (!mediaRes.ok) {
-        return res.status(mediaRes.status).send('Gagal mengambil file media');
+      if (!mediaRes.ok && mediaRes.status !== 206) {
+        return res.status(mediaRes.status).send('Gagal mengambil berkas media');
       }
 
       const contentType = mediaRes.headers.get('content-type') || (filename.endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4');
       res.setHeader('Content-Type', contentType);
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      const contentRange = mediaRes.headers.get('content-range');
+      if (contentRange) {
+        res.setHeader('Content-Range', contentRange);
+      }
+
+      const contentLength = mediaRes.headers.get('content-length');
+      if (contentLength) {
+        res.setHeader('Content-Length', contentLength);
+      }
 
       if (isDownload) {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
       }
 
+      res.status(mediaRes.status);
+
+      // Stream buffer back to client
       const arrayBuffer = await mediaRes.arrayBuffer();
       res.send(Buffer.from(arrayBuffer));
     } catch (error: any) {

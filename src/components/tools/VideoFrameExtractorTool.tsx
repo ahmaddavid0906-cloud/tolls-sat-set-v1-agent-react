@@ -28,7 +28,8 @@ import {
   Check,
   RefreshCw,
   Zap,
-  HardDrive
+  HardDrive,
+  Clipboard as ClipboardIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import JSZip from 'jszip';
@@ -181,50 +182,99 @@ export default function VideoFrameExtractorTool({
   };
 
   // --- HANDLE: TikTok / Link Import ---
-  const handleFetchLink = async () => {
-    if (!tiktokUrl.trim()) {
+  const handleFetchLink = async (overrideUrl?: string) => {
+    const rawInput = (overrideUrl || tiktokUrl).trim();
+    if (!rawInput) {
       setInputError('Masukkan tautan video TikTok atau URL video langsung.');
       return;
+    }
+
+    // Extract clean URL from text if user pasted share text containing URL
+    let targetUrl = rawInput;
+    const urlMatch = rawInput.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      targetUrl = urlMatch[0].replace(/[)\]}>,;."']+$/, '');
     }
 
     setIsFetchingLink(true);
     setInputError(null);
 
     try {
-      if (tiktokUrl.includes('tiktok.com')) {
+      if (targetUrl.includes('tiktok.com') || targetUrl.includes('douyin.com')) {
         const res = await fetch('/api/tiktok/info', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: tiktokUrl.trim() }),
+          body: JSON.stringify({ url: targetUrl }),
         });
 
         const data = await safeParseJson(res);
+        if (data.error && !data.hdplay && !data.play) {
+          throw new Error(data.error || 'Gagal memproses video TikTok.');
+        }
 
-        const playUrl = data.hdplay || data.play;
+        const playUrl = data.hdplay || data.play || data.wmplay;
         if (!playUrl) throw new Error('URL stream video TikTok tidak ditemukan.');
 
-        // Use proxy URL for cross-origin CORS canvas extraction
+        const safeTitle = (data.title || 'TikTok Video').replace(/[^a-zA-Z0-9 ]/g, ' ').trim() || 'TikTok Video';
+        const displayTitle = `TikTok: ${safeTitle.slice(0, 32)}...`;
+
+        // Pre-fetch blob via proxy for instant lag-free local seeking in canvas
         const proxiedUrl = `/api/tiktok/proxy?url=${encodeURIComponent(playUrl)}`;
+        try {
+          const videoRes = await fetch(proxiedUrl);
+          if (videoRes.ok) {
+            const blob = await videoRes.blob();
+            const localBlobUrl = URL.createObjectURL(blob);
+            const downloadedFile = new File([blob], `${safeTitle.replace(/\s+/g, '_').slice(0, 30)}.mp4`, { type: 'video/mp4' });
+            setVideoFile(downloadedFile);
+            setVideoName(displayTitle);
+            setVideoObjectUrl(localBlobUrl);
+            setCurrentTime(0);
+            setIsPlaying(false);
+            learningSync.track('link_pasted', { url: targetUrl, title: safeTitle });
+            return;
+          }
+        } catch (fetchBlobErr) {
+          console.warn('Fallback to direct proxied stream URL:', fetchBlobErr);
+        }
+
+        // Fallback to streaming proxy URL if blob creation failed
         setVideoFile(null);
-        setVideoName(`TikTok: ${data.title.slice(0, 30)}...`);
+        setVideoName(displayTitle);
         setVideoObjectUrl(proxiedUrl);
         setCurrentTime(0);
         setIsPlaying(false);
       } else {
         // Direct video link
-        const proxiedUrl = `/api/tiktok/proxy?url=${encodeURIComponent(tiktokUrl.trim())}`;
+        const proxiedUrl = `/api/tiktok/proxy?url=${encodeURIComponent(targetUrl)}`;
         setVideoFile(null);
         setVideoName('Video Tautan Web');
         setVideoObjectUrl(proxiedUrl);
         setCurrentTime(0);
         setIsPlaying(false);
       }
-      learningSync.track('link_pasted', { url: tiktokUrl });
+      learningSync.track('link_pasted', { url: targetUrl });
     } catch (err: any) {
       console.error(err);
-      setInputError(err.message || 'Gagal memuat video dari tautan.');
+      setInputError(err.message || 'Gagal memuat video dari tautan. Pastikan link valid dan dapat diakses.');
     } finally {
       setIsFetchingLink(false);
+    }
+  };
+
+  const handlePasteClipboardUrl = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setSourceMethod('link');
+        setTiktokUrl(text);
+        setInputError(null);
+        if (text.includes('tiktok.com')) {
+          handleFetchLink(text);
+        }
+      }
+    } catch (e) {
+      setInputError('Gagal mengakses clipboard otomatis. Silakan tempel secara manual dengan Ctrl+V.');
     }
   };
 
@@ -702,17 +752,28 @@ export default function VideoFrameExtractorTool({
             <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
               <p className="text-xs text-slate-600">Tempel URL video TikTok atau MP4 web untuk diekstrak langsung dari server proxy.</p>
               <div className="flex gap-2">
-                <input
-                  type="url"
-                  placeholder="https://vt.tiktok.com/ZS... atau URL MP4"
-                  value={tiktokUrl}
-                  onChange={(e) => {
-                    setSourceMethod('link');
-                    setTiktokUrl(e.target.value);
-                  }}
-                  onFocus={() => setSourceMethod('link')}
-                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#5b50e5] focus:ring-2 focus:ring-[#5b50e5]/20"
-                />
+                <div className="relative flex-1 flex items-center">
+                  <input
+                    type="text"
+                    placeholder="https://vt.tiktok.com/ZS... atau URL MP4"
+                    value={tiktokUrl}
+                    onChange={(e) => {
+                      setSourceMethod('link');
+                      setTiktokUrl(e.target.value);
+                    }}
+                    onFocus={() => setSourceMethod('link')}
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-3.5 pr-20 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#5b50e5] focus:ring-2 focus:ring-[#5b50e5]/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePasteClipboardUrl}
+                    className="absolute right-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    title="Tempel dari Clipboard"
+                  >
+                    <ClipboardIcon className="w-3 h-3" />
+                    <span>Tempel</span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
